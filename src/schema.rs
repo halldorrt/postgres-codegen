@@ -1,6 +1,8 @@
+use async_trait::async_trait;
 use std::collections::HashMap;
 
-use async_trait::async_trait;
+mod postgres;
+pub use postgres::PostgresSchema;
 
 #[async_trait]
 pub trait DbSchema {
