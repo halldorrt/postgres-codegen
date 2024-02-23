@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use std::collections::HashMap;
 
 mod postgres;
 pub use postgres::PostgresSchema;
@@ -9,8 +8,6 @@ pub trait DbSchema {
     async fn get_enums(&self) -> Vec<EnumDefinition>;
 
     async fn get_tables(&self) -> Vec<TableDefinition>;
-
-    async fn get_columns(&self) -> HashMap<u32, Vec<ColumnDefinition>>;
 }
 
 #[derive(Debug)]
@@ -18,6 +15,7 @@ pub struct TableDefinition {
     pub oid: u32,
     pub schema: String,
     pub name: String,
+    pub columns: Vec<ColumnDefinition>,
 }
 
 #[derive(Debug)]

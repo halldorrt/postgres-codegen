@@ -29,6 +29,51 @@ impl PostgresSchema {
 
         PostgresSchema { client }
     }
+
+    async fn columns(&self) -> HashMap<u32, Vec<ColumnDefinition>> {
+        let rows = self
+            .client
+            .query(
+                r#"
+                    select 
+                      tbl.oid as table_oid, 
+                      c.column_name,
+                      c.data_type, 
+                      c.is_nullable
+                    from information_schema.columns c
+                    left join pg_namespace nsp
+                      on nspname = c.table_schema
+                    left join pg_class tbl
+                      on tbl.relname = c.table_name
+                      and tbl.relnamespace = nsp.oid
+                    where c.table_schema not in ('information_schema', 'pg_catalog')
+                      and c.table_schema not like 'pg_toast%'
+                    order by table_oid;
+                "#,
+                &[],
+            )
+            .await
+            .unwrap();
+
+        rows.into_iter().fold(HashMap::new(), |mut map, row| {
+            let table_oid: u32 = row.get(0);
+            let name: String = row.get(1);
+            let data_type: String = row.get(2);
+            let is_nullable: &str = row.get(3);
+
+            map.entry(table_oid).or_default().push(ColumnDefinition {
+                table_oid,
+                name,
+                data_type,
+                is_nullable: match { is_nullable } {
+                    "YES" => true,
+                    "NO" => false,
+                    _ => panic!("Invalid value for is_nullable"),
+                },
+            });
+            map
+        })
+    }
 }
 
 #[async_trait]
@@ -93,6 +138,7 @@ impl DbSchema for PostgresSchema {
             )
             .await
             .unwrap();
+        let mut columns = self.columns().await;
 
         rows.into_iter()
             .map(|row| {
@@ -100,54 +146,14 @@ impl DbSchema for PostgresSchema {
                 let schema: String = row.get(1);
                 let name: String = row.get(2);
 
-                TableDefinition { oid, schema, name }
+                TableDefinition {
+                    oid,
+                    schema,
+                    name,
+                    columns: columns.remove(&oid).unwrap(),
+                }
             })
             .collect()
-    }
-
-    async fn get_columns(&self) -> HashMap<u32, Vec<ColumnDefinition>> {
-        let rows = self
-            .client
-            .query(
-                r#"
-                    select 
-                      tbl.oid as table_oid, 
-                      c.column_name,
-                      c.data_type, 
-                      c.is_nullable
-                    from information_schema.columns c
-                    left join pg_namespace nsp
-                      on nspname = c.table_schema
-                    left join pg_class tbl
-                      on tbl.relname = c.table_name
-                      and tbl.relnamespace = nsp.oid
-                    where c.table_schema not in ('information_schema', 'pg_catalog')
-                      and c.table_schema not like 'pg_toast%'
-                    order by table_oid;
-                "#,
-                &[],
-            )
-            .await
-            .unwrap();
-
-        rows.into_iter().fold(HashMap::new(), |mut map, row| {
-            let table_oid: u32 = row.get(0);
-            let name: String = row.get(1);
-            let data_type: String = row.get(2);
-            let is_nullable: &str = row.get(3);
-
-            map.entry(table_oid).or_default().push(ColumnDefinition {
-                table_oid,
-                name,
-                data_type,
-                is_nullable: match { is_nullable } {
-                    "YES" => true,
-                    "NO" => false,
-                    _ => panic!("Invalid value for is_nullable"),
-                },
-            });
-            map
-        })
     }
 }
 
