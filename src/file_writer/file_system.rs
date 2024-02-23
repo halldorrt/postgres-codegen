@@ -12,9 +12,9 @@ impl FileWriter for FileSystemWriter {
             }
 
             for file in folder.files {
-                let file_path = path.join(&file.name);
+                let file_path = path.join(format!("{}.{}", &file.name, &file.extension));
                 let mut fs_file = fs::File::create(file_path).unwrap();
-                for line in file.conent {
+                for line in file.content {
                     fs_file.write_all(line.as_bytes()).unwrap();
                     fs_file.write_all(b"\n").unwrap();
                 }
@@ -36,8 +36,9 @@ mod tests {
             Folder {
                 path: "/tmp/base".to_string(),
                 files: vec![File {
-                    name: "test1.txt".to_string(),
-                    conent: vec![
+                    name: "test1".to_string(),
+                    extension: "txt".to_string(),
+                    content: vec![
                         "Absolute base folder line 1".to_string(),
                         "Absolute base folder line 2".to_string(),
                     ],
@@ -46,8 +47,9 @@ mod tests {
             Folder {
                 path: "/tmp/base/nested".to_string(),
                 files: vec![File {
-                    name: "test2.txt".to_string(),
-                    conent: vec![
+                    name: "test2".to_string(),
+                    extension: "txt".to_string(),
+                    content: vec![
                         "Absolute Nested folder line 1".to_string(),
                         "Absolute Nested folder line 2".to_string(),
                     ],
@@ -73,8 +75,9 @@ mod tests {
             Folder {
                 path: "./test/base".to_string(),
                 files: vec![File {
-                    name: "test1.txt".to_string(),
-                    conent: vec![
+                    name: "test1".to_string(),
+                    extension: "txt".to_string(),
+                    content: vec![
                         "Relative base folder line 1".to_string(),
                         "Relative base folder line 2".to_string(),
                     ],
@@ -83,8 +86,9 @@ mod tests {
             Folder {
                 path: "./test/base/nested".to_string(),
                 files: vec![File {
-                    name: "test2.txt".to_string(),
-                    conent: vec![
+                    name: "test2".to_string(),
+                    extension: "txt".to_string(),
+                    content: vec![
                         "Relative nested folder line 1".to_string(),
                         "Relative nested folder line 2".to_string(),
                     ],

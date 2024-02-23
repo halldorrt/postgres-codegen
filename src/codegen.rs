@@ -6,37 +6,68 @@ use convert_case::{Case, Casing};
 use std::collections::HashMap;
 
 pub fn generate(tables: Vec<TableDefinition>, enums: Vec<EnumDefinition>) -> Vec<Folder> {
-    let mut tables = table_codegen(tables);
-    let mut columns = enum_codegen(enums);
+    let tables = tables_by_schema(tables);
+    let enums = enums_by_schema(enums);
 
-    tables.append(&mut columns);
+    let mut all_schemas = tables.keys().chain(enums.keys()).collect::<Vec<_>>();
+    all_schemas.sort();
+    all_schemas.dedup();
 
-    tables
-}
-
-fn table_codegen(tables: Vec<TableDefinition>) -> Vec<Folder> {
-    let tables_by_schema: HashMap<String, Vec<TableDefinition>> =
-        tables.into_iter().fold(HashMap::new(), |mut acc, t| {
-            let schema = t.schema.clone();
-            acc.entry(schema).or_default().push(t);
-            acc
-        });
-
-    let folders = tables_by_schema
-        .into_iter()
-        .map(|(schema, tables)| Folder {
-            path: format!("./src/out/{}/", schema),
-            files: tables
-                .into_iter()
-                .map(|t| File {
-                    name: format!("{}.rs", t.name),
-                    conent: handle_table(&t),
-                })
+    let mod_file = Folder {
+        path: "./src/out/".into(),
+        files: vec![File {
+            name: "mod".into(),
+            extension: "rs".into(),
+            content: all_schemas
+                .iter()
+                .map(|s| format!("pub mod {s};"))
                 .collect(),
-        })
-        .collect();
+        }],
+    };
+
+    let mut folders = vec![mod_file];
+
+    for (schema, mut files) in tables {
+        let path = format!("./src/out/{}/", schema);
+
+        let mut mod_file = File {
+            name: "mod".into(),
+            extension: "rs".into(),
+            content: files
+                .iter()
+                .map(|f| mod_and_use(&f.name))
+                .collect::<Vec<String>>(),
+        };
+        if enums.contains_key(&schema) {
+            mod_file.content.push("pub mod enums;".into());
+            mod_file.content.push("pub use enums::*;".into());
+        }
+        files.push(mod_file);
+
+        folders.push(Folder { path, files })
+    }
+
+    for (schema, enums) in enums {
+        folders.push(Folder {
+            path: format!("./src/out/{}/enums/", schema),
+            files: enums,
+        });
+    }
 
     folders
+}
+
+/// Generate files for each table and group them by schema.
+fn tables_by_schema(tables: Vec<TableDefinition>) -> HashMap<String, Vec<File>> {
+    tables.into_iter().fold(HashMap::new(), |mut map, t| {
+        let content = handle_table(&t);
+        map.entry(t.schema).or_default().push(File {
+            name: t.name,
+            extension: "rs".into(),
+            content,
+        });
+        map
+    })
 }
 
 fn handle_table(t: &TableDefinition) -> Vec<String> {
@@ -48,48 +79,33 @@ fn handle_table(t: &TableDefinition) -> Vec<String> {
     lines
 }
 
-fn enum_codegen(enums: Vec<EnumDefinition>) -> Vec<Folder> {
-    let enums_by_schema: HashMap<String, Vec<EnumDefinition>> =
-        enums.into_iter().fold(HashMap::new(), |mut acc, e| {
-            let schema = e.schema.clone();
-            acc.entry(schema).or_default().push(e);
-            acc
+/// Takes enum definitions and returns a map, where the key is the schema name
+/// and the value is a vector of enum files, one for each enum.
+fn enums_by_schema(enums: Vec<EnumDefinition>) -> HashMap<String, Vec<File>> {
+    let mut enums_by_schema: HashMap<String, Vec<File>> =
+        enums.into_iter().fold(HashMap::new(), |mut map, e| {
+            let content = handle_enum(&e);
+            map.entry(e.schema).or_default().push(File {
+                name: e.name,
+                extension: "rs".into(),
+                content,
+            });
+            map
         });
 
-    let folders = enums_by_schema
-        .into_iter()
-        .map(|(schema, enums)| Folder {
-            path: format!("./src/out/{}/enums/", schema),
-            files: {
-                let mut files: Vec<File> = enums
-                    .iter()
-                    .map(|e| File {
-                        name: format!("{}.rs", e.name),
-                        conent: handle_enum(&e),
-                    })
-                    .collect();
+    for (_, enums) in &mut enums_by_schema {
+        enums.push(File {
+            name: "mod".into(),
+            extension: "rs".into(),
+            content: enums.iter().map(|e| mod_and_use(&e.name)).collect(),
+        });
+    }
 
-                files.push(File {
-                    name: "mod.rs".to_string(),
-                    conent: enums
-                        .iter()
-                        .map(|e| {
-                            format!(
-                                "pub mod {};\npub use {}::{};\n",
-                                e.name,
-                                e.name,
-                                e.name.to_case(Case::Pascal)
-                            )
-                        })
-                        .collect(),
-                });
+    enums_by_schema
+}
 
-                files
-            },
-        })
-        .collect();
-
-    folders
+fn mod_and_use(mod_name: &str) -> String {
+    format!("mod {mod_name};\npub use {mod_name}::*;")
 }
 
 fn handle_enum(e: &EnumDefinition) -> Vec<String> {

@@ -12,5 +12,6 @@ pub struct Folder {
 
 pub struct File {
     pub name: String,
-    pub conent: Vec<String>,
+    pub extension: String,
+    pub content: Vec<String>,
 }
