@@ -76,14 +76,23 @@ fn tables_by_schema(tables: Vec<TableDefinition>) -> HashMap<String, Vec<File>> 
 
 fn handle_table(t: &TableDefinition) -> Vec<String> {
     let column_types = &column_types();
+    let mut enum_imports = vec![];
 
     let mut lines = vec![format!("pub struct {} {{", t.name.to_case(Case::Pascal))];
     for column in &t.columns {
         let mut data_type: String = if column.data_type == "USER-DEFINED" {
+            enum_imports.push(column.udt_name.to_case(Case::Pascal));
             column.udt_name.to_case(Case::Pascal)
         } else if column.data_type == "ARRAY" {
             // TODO: this doesn't work with user defined types
-            format!("Vec<{}>", column.udt_name.to_case(Case::Pascal))
+            let inner = column_types
+                .get(&column.udt_name.as_str()[1..]) // array types start with _
+                .expect(&format!(
+                    "Unknown column data type {}",
+                    column.udt_name.as_str()
+                ))
+                .to_string();
+            format!("Vec<{}>", inner)
         } else {
             column_types
                 .get(column.data_type.as_str())
@@ -101,6 +110,17 @@ fn handle_table(t: &TableDefinition) -> Vec<String> {
         lines.push(format!("    pub {}: {},", column.name, data_type));
     }
     lines.push("}".to_string());
+
+    enum_imports.sort();
+    enum_imports.dedup();
+    if enum_imports.len() == 1 {
+        lines.insert(0, format!("use super::{};", enum_imports[0]));
+        lines.insert(1, String::new());
+    } else if enum_imports.len() > 1 {
+        lines.insert(0, format!("use super::{{{}}};", enum_imports.join(", ")));
+        lines.insert(1, String::new());
+    }
+
     lines
 }
 
