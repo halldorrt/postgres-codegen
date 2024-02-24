@@ -36,16 +36,13 @@ impl PostgresSchema {
             .query(
                 r#"
                     select 
-                      tbl.oid as table_oid, 
+                      (c.table_schema || '.' || c.table_name)::regclass::oid as table_oid, 
                       c.column_name,
                       c.data_type, 
-                      c.is_nullable
+                      c.is_nullable,
+                      c.udt_schema,
+                      c.udt_name
                     from information_schema.columns c
-                    left join pg_namespace nsp
-                      on nspname = c.table_schema
-                    left join pg_class tbl
-                      on tbl.relname = c.table_name
-                      and tbl.relnamespace = nsp.oid
                     where c.table_schema not in ('information_schema', 'pg_catalog')
                       and c.table_schema not like 'pg_toast%'
                     order by table_oid;
@@ -60,6 +57,8 @@ impl PostgresSchema {
             let name: String = row.get(1);
             let data_type: String = row.get(2);
             let is_nullable: &str = row.get(3);
+            let udt_schema: String = row.get(4);
+            let udt_name: String = row.get(5);
 
             map.entry(table_oid).or_default().push(ColumnDefinition {
                 table_oid,
@@ -70,6 +69,8 @@ impl PostgresSchema {
                     "NO" => false,
                     _ => panic!("Invalid value for is_nullable"),
                 },
+                udt_schema,
+                udt_name,
             });
             map
         })

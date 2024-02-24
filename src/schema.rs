@@ -23,6 +23,8 @@ pub struct ColumnDefinition {
     pub table_oid: u32,
     pub name: String,
     pub data_type: String,
+    pub udt_name: String,
+    pub udt_schema: String,
     pub is_nullable: bool,
 }
 

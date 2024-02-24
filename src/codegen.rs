@@ -57,6 +57,10 @@ pub fn generate(tables: Vec<TableDefinition>, enums: Vec<EnumDefinition>) -> Vec
     folders
 }
 
+fn mod_and_use(mod_name: &str) -> String {
+    format!("mod {mod_name};\npub use {mod_name}::*;")
+}
+
 /// Generate files for each table and group them by schema.
 fn tables_by_schema(tables: Vec<TableDefinition>) -> HashMap<String, Vec<File>> {
     tables.into_iter().fold(HashMap::new(), |mut map, t| {
@@ -71,12 +75,57 @@ fn tables_by_schema(tables: Vec<TableDefinition>) -> HashMap<String, Vec<File>> 
 }
 
 fn handle_table(t: &TableDefinition) -> Vec<String> {
+    let column_types = &column_types();
+
     let mut lines = vec![format!("pub struct {} {{", t.name.to_case(Case::Pascal))];
     for column in &t.columns {
-        lines.push(format!("    pub {}: {},", column.name, column.data_type));
+        let mut data_type: String = if column.data_type == "USER-DEFINED" {
+            column.udt_name.to_case(Case::Pascal)
+        } else if column.data_type == "ARRAY" {
+            // TODO: this doesn't work with user defined types
+            format!("Vec<{}>", column.udt_name.to_case(Case::Pascal))
+        } else {
+            column_types
+                .get(column.data_type.as_str())
+                .expect(&format!(
+                    "Unknown column data type {}",
+                    column.data_type.as_str()
+                ))
+                .to_string()
+        };
+
+        if column.is_nullable {
+            data_type = format!("Option<{}>", data_type);
+        }
+
+        lines.push(format!("    pub {}: {},", column.name, data_type));
     }
     lines.push("}".to_string());
     lines
+}
+
+fn column_types() -> HashMap<&'static str, &'static str> {
+    let mut map = HashMap::new();
+    map.insert("boolean", "bool");
+    map.insert("char", "String"); // TODO: is this correct?
+    map.insert("character", "String");
+    map.insert("character varying", "String");
+    map.insert("text", "String");
+    map.insert("smallint", "i16");
+    map.insert("integer", "i32");
+    map.insert("bigint", "i64");
+    map.insert("numeric", "String"); // TODO: How is this handled?
+    map.insert("double precision", "f64");
+    map.insert("date", "chrono::NaiveDate");
+    map.insert(
+        "timestamp without time zone",
+        "chrono::DateTime<chrono::Utc>",
+    );
+    map.insert("timestamp with time zone", "chrono::DateTime<chrono::Utc>");
+    map.insert("uuid", "uuid::Uuid");
+    map.insert("json", "serde_json::Value");
+    map.insert("jsonb", "serde_json::Value");
+    map
 }
 
 /// Takes enum definitions and returns a map, where the key is the schema name
@@ -102,10 +151,6 @@ fn enums_by_schema(enums: Vec<EnumDefinition>) -> HashMap<String, Vec<File>> {
     }
 
     enums_by_schema
-}
-
-fn mod_and_use(mod_name: &str) -> String {
-    format!("mod {mod_name};\npub use {mod_name}::*;")
 }
 
 fn handle_enum(e: &EnumDefinition) -> Vec<String> {
